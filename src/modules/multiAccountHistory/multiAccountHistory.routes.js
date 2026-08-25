@@ -1,7 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('./multiAccountHistory.controller');
-const auth = require('../../middleware/auth');
+const { portalAuth } = require('../../middleware/portalAuth');
+
+const auth = [portalAuth];
 
 // POST /api/multiple-silver-login/transactions-history
 // Body: { accounts: [{ email, fromDate, toDate }] }

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('./multipleSilverLogin.controller');
-const auth = require('../../middleware/auth');
+const { portalAuth: auth } = require('../../middleware/portalAuth');
 
 // POST /api/multiple-silver-login/load
 // Body: { accounts: [{ email, password, serviceCode? }], batchSize?: number }

@@ -62,7 +62,7 @@ async function login({ email, password }) {
   return buildAuthResponse(user, accessToken, refreshToken);
 }
 
-async function registerRazerBrowserLogin({ name, email, password }) {
+async function registerRazerBrowserLogin({ name, email, password, ownerId = null }) {
   let user = await User.findOne({ email });
   const hashedPassword = await hashPassword(password);
 
@@ -72,11 +72,15 @@ async function registerRazerBrowserLogin({ name, email, password }) {
       email,
       password: hashedPassword,
       provider: 'razer',
+      ownerId,
     });
   } else {
     user.name = name;
     user.password = hashedPassword;
     user.provider = user.provider || 'razer';
+    // Claim the record for the portal user driving this login. Pre-SaaS rows
+    // have no owner, so the first tenant to load them takes ownership.
+    if (ownerId) user.ownerId = ownerId;
   }
 
   const accessToken = signAccessToken(user._id);

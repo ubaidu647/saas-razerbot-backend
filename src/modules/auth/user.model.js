@@ -15,11 +15,13 @@ const userSchema = new mongoose.Schema(
     open_id: { type: String },
     provider: { type: String, enum: ['local', 'razer'], default: 'local' },
     proxyId: { type: Number, default: null },
+    // Portal user this Razer account belongs to. Null for pre-SaaS records.
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'PortalUser', default: null, index: true },
   },
   { timestamps: true }
 );
 
-const registeredUser = new mongoose.Schema(
+const registeredUserSchema = new mongoose.Schema(
   {
     name: { type: String, trim: true },
     first_name: { type: String, default: '' },
@@ -33,9 +35,20 @@ const registeredUser = new mongoose.Schema(
     open_id: { type: String },
     provider: { type: String, enum: ['local', 'razer'], default: 'local' },
     proxyId: { type: Number, default: null },
+    // Portal user this Razer account belongs to. Null for pre-SaaS records.
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'PortalUser', default: null, index: true },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model('User', userSchema);
-module.exports = mongoose.model('RegisteredUser', registeredUser);
+const User = mongoose.model('User', userSchema);
+const RegisteredUser = mongoose.model('RegisteredUser', registeredUserSchema);
+
+// NOTE: this file previously did `module.exports = model('User')` followed by
+// `module.exports = model('RegisteredUser')`, so every `require` of it — under
+// either name — resolved to RegisteredUser. Existing data therefore lives in
+// the `registeredusers` collection, and `RegisteredUser` stays the default
+// export so those call sites keep hitting the same collection.
+module.exports = RegisteredUser;
+module.exports.User = User;
+module.exports.RegisteredUser = RegisteredUser;

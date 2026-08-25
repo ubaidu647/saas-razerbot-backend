@@ -1,5 +1,9 @@
 const express = require('express');
-const auth = require('../../middleware/auth');
+const { portalAuth } = require('../../middleware/portalAuth');
+const razerContext = require('../../middleware/razerContext');
+
+// Portal identity first, then resolve which Razer account the call targets.
+const auth = [portalAuth, razerContext];
 const transactionsController = require('./transactions.controller');
 
 const router = express.Router();

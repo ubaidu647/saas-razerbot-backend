@@ -2,6 +2,8 @@ const authService = require('./auth.service');
 const User = require('./user.model');
 const RegisteredUser = require('./user.model');
 const { loginOneAccount } = require('../../utils/razerLogin');
+const { assertCanLoadAccounts } = require('../packages/limits.service');
+const razerAccountService = require('../razerAccounts/razerAccount.service');
 
 
 async function register(req, res, next) {
@@ -32,6 +34,19 @@ async function login(req, res) {
   try {
     const { email, password } = req.body;
 
+    // Attaching a Razer account consumes a gold slot from the caller's package.
+    try {
+      await assertCanLoadAccounts(req.portalUser, 'gold', [email]);
+    } catch (limitErr) {
+      sendSSE(res, 'error', {
+        success: false,
+        code: limitErr.code,
+        message: limitErr.message,
+        details: limitErr.details,
+      });
+      return res.end();
+    }
+
     const loginResult = await loginOneAccount({ email, password, serviceCode: '0060' });
 
     if (!loginResult.success) {
@@ -41,7 +56,14 @@ async function login(req, res) {
 
     sendSSE(res, 'logged_in', { message: 'Login successful, loading your account...' });
 
-    const authResult = await authService.registerRazerBrowserLogin({ name: email, email, password });
+    const authResult = await authService.registerRazerBrowserLogin({
+      name: email,
+      email,
+      password,
+      ownerId: req.portalUserId,
+    });
+
+    await razerAccountService.registerLoaded(req.portalUserId, 'gold', [email]);
 
     await authService.saveRazerPayloadData({
       userId: authResult.user.id,

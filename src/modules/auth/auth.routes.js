@@ -4,9 +4,13 @@ const controller = require('./auth.controller');
 const validate = require('../../middleware/validate');
 const { registerSchema, loginSchema } = require('./user.validation');
 const auth = require('../../middleware/auth');
+const { portalAuth, requireRole } = require('../../middleware/portalAuth');
 
-router.post('/register', validate(registerSchema), controller.register);
-router.post('/login', controller.login);
+// Self-service registration is closed: only the super admin provisions
+// accounts now. Customer portal accounts are created via POST /api/admin/users.
+router.post('/register', portalAuth, requireRole('superadmin'), validate(registerSchema), controller.register);
+// Attaches a Razer account to the signed-in portal user (SSE stream).
+router.post('/login', portalAuth, controller.login);
 router.get('/homepage', controller.homepage);
 
 // Razer OAuth endpoints

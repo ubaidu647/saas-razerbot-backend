@@ -2,6 +2,8 @@ const { loadAccounts, authenticateAccounts, transactAccounts, getProductBalance,
 const RazerPayloadData = require('../auth/razerPayloadData.model');
 const SilverMultipleTransaction = require('./silverMultipleTransaction.model');
 const logStore = require('../../utils/logStore');
+const { assertCanLoadAccounts, getUsageSummary } = require('../packages/limits.service');
+const razerAccountService = require('../razerAccounts/razerAccount.service');
 
 async function debugPayload(req, res) {
   const doc = await RazerPayloadData.findOne({ email: req.params.email });
@@ -38,6 +40,19 @@ function validateAccounts(accounts) {
   return null;
 }
 
+// Gold and silver are capped independently by the caller's package.
+function resolveAccountType(type) {
+  return type === 'gold' ? 'gold' : 'silver';
+}
+
+// Claim a slot only for accounts that actually logged in, so a failed batch
+// never eats into the package allowance.
+async function claimLoadedSlots(req, accountType, result) {
+  const loaded = (result.results || []).filter(r => r.success).map(r => r.email);
+  if (loaded.length) await razerAccountService.registerLoaded(req.portalUserId, accountType, loaded);
+  return loaded.length;
+}
+
 async function bulkLoad(req, res, next) {
   try {
     const { accounts, batchSize, type } = req.body;
@@ -46,8 +61,13 @@ async function bulkLoad(req, res, next) {
     if (error) return res.status(400).json({ success: false, message: error });
 
     const resolvedBatchSize = batchSize || getAutoBatchSize(accounts.length);
+    const accountType = resolveAccountType(type);
 
-    const result = await loadAccounts(accounts, { batchSize: resolvedBatchSize, type });
+    // Enforce the package cap before doing any network work.
+    await assertCanLoadAccounts(req.portalUser, accountType, accounts.map(a => a.email));
+
+    const result = await loadAccounts(accounts, { batchSize: resolvedBatchSize, type, ownerId: req.portalUserId });
+    await claimLoadedSlots(req, accountType, result);
 
     res.json({
       success: true,
@@ -57,6 +77,7 @@ async function bulkLoad(req, res, next) {
       elapsed: result.elapsed,
       batchSize: resolvedBatchSize,
       results: result.results,
+      usage: await getUsageSummary(req.portalUser),
     });
   } catch (err) {
     next(err);
@@ -72,6 +93,20 @@ async function bulkLoadStream(req, res, next) {
     if (error) return res.status(400).json({ success: false, message: error });
 
     const resolvedBatchSize = batchSize || getAutoBatchSize(accounts.length);
+    const accountType = resolveAccountType(type);
+
+    // Check the cap before opening the SSE stream so a rejection is a plain
+    // JSON 403 the client can surface directly.
+    try {
+      await assertCanLoadAccounts(req.portalUser, accountType, accounts.map(a => a.email));
+    } catch (limitErr) {
+      return res.status(limitErr.status || 403).json({
+        success: false,
+        code: limitErr.code,
+        message: limitErr.message,
+        details: limitErr.details,
+      });
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -85,16 +120,20 @@ async function bulkLoadStream(req, res, next) {
     const result = await loadAccounts(accounts, {
       batchSize: resolvedBatchSize,
       type,
+      ownerId: req.portalUserId,
       onProgress: (account, done, total) => {
         send('progress', { done, total, account });
       },
     });
+
+    await claimLoadedSlots(req, accountType, result);
 
     send('done', {
       total: result.total,
       loaded: result.success,
       failed: result.failed,
       elapsed: result.elapsed,
+      usage: await getUsageSummary(req.portalUser),
     });
 
     res.end();

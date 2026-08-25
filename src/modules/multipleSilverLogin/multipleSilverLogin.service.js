@@ -63,7 +63,7 @@ async function refreshAccessToken(razerPayload) {
   }
 }
 
-async function loadAccounts(accounts, { batchSize = 20, onProgress, type } = {}) {
+async function loadAccounts(accounts, { batchSize = 20, onProgress, type, ownerId = null } = {}) {
   const results = [];
   const start = Date.now();
   // Gold multi-account login uses the server's own IP; silver keeps rotating proxies.
@@ -77,7 +77,7 @@ async function loadAccounts(accounts, { batchSize = 20, onProgress, type } = {})
       batch.map((account, batchIdx) => {
         const stagger = batchIdx * 100;
         return new Promise(r => setTimeout(r, stagger))
-          .then(() => loginAndSave(account, useProxy ? assignProxy(i + batchIdx, proxies) : null));
+          .then(() => loginAndSave(account, useProxy ? assignProxy(i + batchIdx, proxies) : null, ownerId));
       })
     );
 
@@ -104,7 +104,7 @@ async function loadAccounts(accounts, { batchSize = 20, onProgress, type } = {})
   };
 }
 
-async function loginAndSave(account, proxy = null) {
+async function loginAndSave(account, proxy = null, ownerId = null) {
   const { email, password, serviceCode = '0060' } = account;
 
   const loginResult = await loginOneAccount({ email, password, serviceCode, proxy });
@@ -114,7 +114,7 @@ async function loginAndSave(account, proxy = null) {
   }
 
   // Register or update user in DB
-  const authResult = await registerRazerBrowserLogin({ name: email, email, password });
+  const authResult = await registerRazerBrowserLogin({ name: email, email, password, ownerId });
 
   // Save tokens to DB (store oauth session cookies in razerIdAuthToken for authenticate step)
   await saveRazerPayloadData({
